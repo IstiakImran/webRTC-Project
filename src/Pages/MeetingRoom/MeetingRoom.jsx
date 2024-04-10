@@ -1,5 +1,4 @@
-
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useSelector } from 'react-redux';
 import MicIcon from "../../assets/MicIcon.png";
@@ -14,134 +13,174 @@ const MeetingRoom = () => {
   const { meetingCode } = useParams();
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
-  const [stream, setStream] = useState(null);
+  const [localStream, setLocalStream] = useState(null);
   const [micEnabled, setMicEnabled] = useState(true);
   const [cameraEnabled, setCameraEnabled] = useState(true);
   const [showChat, setShowChat] = useState(false);
+  const peerConnections = useMemo(() => ({}), []); // Store peer connections
 
-  // Handling local stream setup
-  useEffect(() => {
-    navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-      .then((stream) => {
-        setStream(stream); // Set the stream state
-        if (localVideoRef.current) {
-          localVideoRef.current.srcObject = stream;
-        }
-        socket.emit('join-room', { meetingCode, stream: true });
-      })
-      .catch((error) => {
-        console.error('Error accessing media devices:', error);
-      });
-  }, [socket, meetingCode]);
 
-  useEffect(() => {
-    if (!stream) return; // Ensure stream is available
-  
+  const createPeerConnection = useCallback((socketId) => {
+    if (typeof window === 'undefined') {
+      return null; // Return null if we're not in a browser environment
+    }
+
+    if (peerConnections[socketId]) {
+      return peerConnections[socketId];
+    }
+
     const peerConnection = new RTCPeerConnection({
-      iceServers: [ // Using Google's public STUN server for demo purposes
-        { urls: "stun:stun2.1.google.com:19302" },
-      ],
+      iceServers: [{ urls: 'stun:stun.stunprotocol.org' }],
     });
-  
-    // Add each track from the local stream to the peer connection
-    stream.getTracks().forEach(track => {
-      peerConnection.addTrack(track, stream);
-    });
-  
-    // Listen for ICE candidates and send them to the remote peer
+
+    peerConnections[socketId] = peerConnection;
+
+    if (localStream) {
+      localStream.getTracks().forEach(track => {
+        peerConnection.addTrack(track, localStream);
+      });
+    }
+
     peerConnection.onicecandidate = event => {
       if (event.candidate) {
-        socket.emit('ice-candidate', { meetingCode, candidate: event.candidate.toJSON() });
+        socket.emit('ice-candidate', { target: socketId, candidate: event.candidate.toJSON() });
       }
     };
-  
-    // When a remote stream is added, set the stream on the remote video element
+
+    // Assume there's a remoteVideoRef pointing to the remote video element
     peerConnection.ontrack = event => {
       if (remoteVideoRef.current && event.streams[0]) {
         remoteVideoRef.current.srcObject = event.streams[0];
       }
     };
-  
-    // Handle receiving an offer from a peer
-    socket.on('offer', async (data) => {
-      await peerConnection.setRemoteDescription(new RTCSessionDescription(data.sdp));
-      const answer = await peerConnection.createAnswer();
-      await peerConnection.setLocalDescription(answer);
-      socket.emit('answer', { meetingCode, sdp: peerConnection.localDescription.toJSON() });
+
+    return peerConnection;
+  }, [socket, peerConnections, localStream]);
+  const handleReceiveOffer = useCallback(({ sender, sdp }) => {
+    if (typeof window === 'undefined') return; // Check if we're in a browser environment
+
+    const peerConnection = createPeerConnection(sender);
+    peerConnection.setRemoteDescription(new RTCSessionDescription(sdp)).then(() => {
+      return peerConnection.createAnswer();
+    }).then(answer => {
+      return peerConnection.setLocalDescription(answer);
+    }).then(() => {
+      socket.emit('answer', { target: sender, sdp: peerConnection.localDescription });
     });
-  
-    // Handle receiving an answer from a peer
-    socket.on('answer', (data) => {
-      peerConnection.setRemoteDescription(new RTCSessionDescription(data.sdp));
-    });
-  
-    // Handle receiving ICE candidates from a peer
-    socket.on('ice-candidate', (data) => {
-      if (data.candidate) {
-        peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+  }, [socket, createPeerConnection]);
+
+  const handleReceiveAnswer = useCallback(({ sender, sdp }) => {
+    if (typeof window === 'undefined') return; // Check if we're in a browser environment
+
+    const peerConnection = peerConnections[sender];
+    if (peerConnection) {
+      peerConnection.setRemoteDescription(new RTCSessionDescription(sdp));
+    }
+  }, [peerConnections]);
+
+  const handleNewICECandidateMsg = useCallback(({ sender, candidate }) => {
+    if (typeof window === 'undefined') return; // Check if we're in a browser environment
+
+    const peerConnection = peerConnections[sender];
+    if (peerConnection) {
+      peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+    }
+  }, [peerConnections]);
+
+
+
+  // Handling local stream setup
+ // Handling local stream setup
+useEffect(() => {
+  if (typeof window === 'undefined') return; // Check if we're in a browser environment
+
+  // Get local media stream
+  navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+    .then(stream => {
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = stream;
       }
+      setLocalStream(stream);
+    })
+    .catch(error => {
+      console.error('Error accessing media devices:', error);
     });
-  
-    // Cleanup on unmount
-    return () => {
-      peerConnection.close();
-      // Also, remove all event listeners to prevent memory leaks
-      socket.off('offer');
-      socket.off('answer');
-      socket.off('ice-candidate');
-    };
-  }, [stream, socket, meetingCode]); // Make sure to include stream in the dependency array
-  
+}, []);
 
+// Handling socket events
+useEffect(() => {
+  if (!socket) return; // Check if socket is available
 
+  // Listen for offers
+  socket.on('offer', handleReceiveOffer);
+
+  // Listen for answers
+  socket.on('answer', handleReceiveAnswer);
+
+  // Listen for ICE candidates
+  socket.on('ice-candidate', handleNewICECandidateMsg);
+
+  return () => {
+    socket.off('offer', handleReceiveOffer);
+    socket.off('answer', handleReceiveAnswer);
+    socket.off('ice-candidate', handleNewICECandidateMsg);
+  };
+}, [socket, handleNewICECandidateMsg, handleReceiveAnswer, handleReceiveOffer]);
+
+useEffect(() => {
+  if (localVideoRef.current && localStream) {
+    localVideoRef.current.srcObject = localStream;
+  }
+}, [localStream]);
   const handleMicToggle = () => {
-    const audioTracks = stream.getAudioTracks();
-    if (audioTracks.length > 0) {
+    if (localStream) {
+      const audioTracks = localStream.getAudioTracks();
+      if (audioTracks.length > 0) {
         audioTracks[0].enabled = !micEnabled;
         setMicEnabled(!micEnabled);
+      }
     }
   };
-  
+
   const handleCameraToggle = () => {
-    const videoTracks = stream.getVideoTracks();
-    if (videoTracks.length > 0) {
+    if (localStream) {
+      const videoTracks = localStream.getVideoTracks();
+      if (videoTracks.length > 0) {
         videoTracks[0].enabled = !cameraEnabled;
         setCameraEnabled(!cameraEnabled);
+      }
     }
   };
-  
+
   const handleHangUp = () => navigate('/');
-  
+
   const handleChatToggle = () => {
     setShowChat(!showChat);
   };
 
-  
   return (
     <div className="meeting-room-container">
       <div className="video-container">
-        <video ref={localVideoRef} autoPlay playsInline ></video> {/* Local stream */}
+        <video ref={localVideoRef} autoPlay playsInline></video> {/* Local stream */}
         <video ref={remoteVideoRef} autoPlay playsInline></video> {/* Remote stream */}
       </div>
 
       <div className="controls-container">
         <button className="control-button" onClick={handleMicToggle}>
-            <img className="control-button-icon" src={MicIcon} alt="Mic" />
+          <img className="control-button-icon" src={MicIcon} alt="Mic" />
         </button>
         <button className="control-button" onClick={handleCameraToggle}>
-            <img className="control-button-icon" src={CameraIcon} alt="Camera" />
+          <img className="control-button-icon" src={CameraIcon} alt="Camera" />
         </button>
         <button className="control-button" onClick={handleHangUp}>
-            <img className="control-button-icon" src={HangUpIcon} alt="Hang Up" />
+          <img className="control-button-icon" src={HangUpIcon} alt="Hang Up" />
         </button>
         <button className="control-button" onClick={handleChatToggle}>
-            <img className="control-button-icon" src={ChatIcon} alt="Chat" />
+          <img className="control-button-icon" src={ChatIcon} alt="Chat" />
         </button>
-    </div>
+      </div>
     </div>
   );
 };
 
 export default MeetingRoom;
-
-
