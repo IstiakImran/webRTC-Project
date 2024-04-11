@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import './HomePage.css';
 
 // Assuming you have a logo image in your assets folder
@@ -67,6 +67,15 @@ function HomePage() {
                     </div>
                 </div>
             </main>
+            <div>
+            <button className="action-button" onClick={joinMeeting}>
+                            <Link to="/broadcast"></Link>
+                        </button>
+                        <br />
+                        <button className="action-button" onClick={joinMeeting}>
+                            <Link to="/consumer"></Link>
+                        </button>
+            </div>
             <footer className="home-footer">
                 <p>© 2024 MyMeet. All rights reserved.</p>
             </footer>
