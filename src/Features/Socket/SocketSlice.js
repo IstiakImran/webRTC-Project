@@ -2,7 +2,7 @@ import { createSlice } from '@reduxjs/toolkit'
 import {io} from 'socket.io-client'
 
 const initialState = {
-  socket : io('http://localhost:5000'),
+  socket : io('https://obyoy-meet-backend.onrender.com'),
 }
 
 export const socketSlice = createSlice({
