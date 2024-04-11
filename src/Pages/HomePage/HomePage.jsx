@@ -65,17 +65,19 @@ function HomePage() {
                             Join
                         </button>
                     </div>
-                </div>
-            </main>
-            <div>
+                    <div>
             <button className="action-button" onClick={joinMeeting}>
-                            <Link to="/broadcast"></Link>
+                            <Link to="/broadcast"> Broad cast</Link>
                         </button>
                         <br />
                         <button className="action-button" onClick={joinMeeting}>
-                            <Link to="/consumer"></Link>
+                            <Link to="/consumer"> View</Link>
                         </button>
             </div>
+                </div>
+                
+            </main>
+            
             <footer className="home-footer">
                 <p>© 2024 MyMeet. All rights reserved.</p>
             </footer>
