@@ -3,6 +3,8 @@ import { RouterProvider, createBrowserRouter } from 'react-router-dom';
 import Main from './Layout/Main/Main';
 import HomePage from './Pages/HomePage/HomePage';
 import MeetingRoom from './Pages/MeetingRoom/MeetingRoom';
+import Viewer from './Pages/OneToMany/Viewer';
+import Broadcast from './Pages/OneToMany/Broadcast';
 
 const Router = () => {
     const route = createBrowserRouter([
@@ -17,6 +19,14 @@ const Router = () => {
                 {
                     path: '/meeting-room/:meetingCode',
                     element: <MeetingRoom></MeetingRoom>
+                },
+                {
+                    path: '/broadcast',
+                    element: <Broadcast></Broadcast>
+                },
+                {
+                    path: '/consumer',
+                    element: <Viewer></Viewer>
                 }
             ],
         }
