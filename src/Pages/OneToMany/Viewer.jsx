@@ -34,7 +34,7 @@ function Viewer() {
       sdp: peer.localDescription
     };
 
-    const { data } = await axios.post('http://localhost:5000/consumer', payload);
+    const { data } = await axios.post('https://obyoy-meet-backend.onrender.com/consumer', payload);
     const desc = new RTCSessionDescription(data.sdp);
     peer.setRemoteDescription(desc).catch(e => console.log(e));
   }
