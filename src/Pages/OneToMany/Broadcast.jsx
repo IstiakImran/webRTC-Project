@@ -11,7 +11,18 @@ const Broadcast = () => {
       const peer = new RTCPeerConnection({
         iceServers: [
           {
-            urls: "stun:stun.stunprotocol.org"
+            urls: "turn:turn.anyfirewall.com:443?transport=tcp"
+          }
+          ,
+          {
+            urls: "turn:turn.xirsys.com:80?transport=udp"
+          },
+          {
+            urls: "turn:turn.xirsys.com:80?transport=tcp"
+          },
+          
+          {
+            urls: "turn:turn.bistri.com:80?transport=udp"
           }
         ]
       });
